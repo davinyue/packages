@@ -6,33 +6,33 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=node
 
-ifeq ($(CONFIG_NODEJS_10),y)
-PKG_VERSION:=v10.24.1
-PKG_RELEASE:=3
-PKG_HASH:=d72fc2c244603b4668da94081dc4d6067d467fdfa026e06a274012f16600480c
-PATCH_DIR:=./patches/v10.x
+ifeq ($(CONFIG_NODEJS_20),y)
+PKG_VERSION:=v20.12.2
+PKG_RELEASE:=1
+PKG_HASH:=d7cbcc5fbfb31e9001f3f0150bbeda59abe5dd7137aaa6273958cd59ce35ced7
+PATCH_DIR:=./patches/v20.x
 else
 ifeq ($(CONFIG_NODEJS_18),y)
-PKG_VERSION:=v18.9.1
+PKG_VERSION:=v18.15.0
 PKG_RELEASE:=1
-PKG_HASH:=f381963d43568ba699915c88629dc6da4a1963804dcd37b2e6e1d10d923dd5d9
+PKG_HASH:=8e44d65018ff973284195c23186469a0ea4082e97ec4200e5f5706d5584daa37
 PATCH_DIR:=./patches/v18.x
 else
 ifeq ($(CONFIG_NODEJS_16),y)
-PKG_VERSION:=v16.17.1
+PKG_VERSION:=v16.19.1
 PKG_RELEASE:=1
-PKG_HASH:=6721feb4152d56d2c6b358ce397abd5a7f1daf09ee2e25c5021b9b4d3f86a330
+PKG_HASH:=17fb716406198125b30c94dd3d1756207b297705626afe16d8dc479a65a1d8b5
 PATCH_DIR:=./patches/v16.x
 else
 ifeq ($(CONFIG_NODEJS_14),y)
-PKG_VERSION:=v14.20.1
+PKG_VERSION:=v14.21.3
 PKG_RELEASE:=1
-PKG_HASH:=365057ea661923cbfa71bdd7a8d0ace9ddff8d22d431ad92355f8433cecff14d
+PKG_HASH:=458ec092e60ad700ddcf079cb63d435c15da4c7bb3d3f99b9a8e58a99e54075e
 PATCH_DIR:=./patches/v14.x
 else
-PKG_VERSION:=v12.22.1
-PKG_RELEASE:=4
-PKG_HASH:=dd650df7773a6ed3e390320ba51ef33cba6499f0e9397709ea3d1debdcbcb989
+PKG_VERSION:=v12.22.12
+PKG_RELEASE:=2
+PKG_HASH:=bc42b7f8495b9bfc7f7850dd180bb02a5bdf139cc232b8c6f02a6967e20714f2
 PATCH_DIR:=./patches/v12.x
 endif
 endif
@@ -66,7 +66,7 @@ define Package/node
   TITLE:=Node.js is a platform built on Chrome's JavaScript runtime
   URL:=https://nodejs.org/
   DEPENDS:=@(HAS_FPU||KERNEL_MIPS_FPU_EMULATOR||SOFT_FLOAT) @!arc @!armeb @!powerpc \
-	   +libstdcpp +libopenssl +zlib +libnghttp2 \
+	   +libstdcpp +(NODEJS_18||NODEJS_20):libopenssl +zlib +libnghttp2 +libuv \
 	   +libcares +libatomic +NODEJS_ICU_SYSTEM:icu +NODEJS_ICU_SYSTEM:icu-full-data
 endef
 
@@ -97,51 +97,54 @@ endef
 
 define Package/node/config
 	menu "Configuration"
-		depends on PACKAGE_node
 
 	choice
 		prompt "Version Selection"
 		default NODEJS_12 if mips||mipsel||mips64||mips64el
-		default NODEJS_16
+		default NODEJS_18
 		help
 		 Select node.js version.
-
-		config NODEJS_10
-			bool "10.x End-of-life : NO LONGER SUPPORTED"
+		 The host package version is also the same.
 
 		config NODEJS_12
-			bool "12.x Maintenance LTS"
+			bool "12.x End-of-life : Only for MIPS"
 
 		config NODEJS_14
 			depends on !(mips||mipsel||mips64||mips64el)
-			bool "14.x Maintenance LTS"
+			bool "14.x End-of-Life"
 
 		config NODEJS_16
 			depends on !(mips||mipsel||mips64||mips64el)
-			bool "16.x Active LTS"
+			bool "16.x End-of-Life"
 
 		config NODEJS_18
 			depends on !(mips||mipsel||mips64||mips64el)
-			bool "18.x Current"
+			bool "18.x Maintenance LTS"
+			
+		config NODEJS_20
+			depends on !(mips||mipsel||mips64||mips64el)
+			bool "20.x Active LTS"
 	endchoice
 
-	choice
-		prompt "i18n features"
-		default NODEJS_ICU_NONE
-		help
-		 Select i18n features
+	if PACKAGE_node
+		choice
+			prompt "i18n features"
+			default NODEJS_ICU_SMALL
+			help
+			 Select i18n features
 
-		config NODEJS_ICU_NONE
-			bool "Disable"
+			config NODEJS_ICU_NONE
+				bool "Disable"
 
-		config NODEJS_ICU_SMALL
-			depends on !BIG_ENDIAN
-			bool "small-icu"
+			config NODEJS_ICU_SMALL
+				depends on !BIG_ENDIAN
+				bool "small-icu"
 
-		config NODEJS_ICU_SYSTEM
-			depends on ARCH_64BIT&&!BIG_ENDIAN
-			bool "system-icu"
-	endchoice
+			config NODEJS_ICU_SYSTEM
+				depends on ARCH_64BIT&&!BIG_ENDIAN
+				bool "system-icu"
+		endchoice
+	endif
 
 	endmenu
 endef
@@ -175,7 +178,7 @@ CONFIGURE_ARGS:= \
 	--dest-os=linux \
 	--cross-compiling \
 	--shared-zlib \
-	--shared-openssl \
+	$(if $(CONFIG_NODEJS_18),--shared-openssl) \
 	--shared-nghttp2 \
 	--shared-cares \
 	--with-intl=$(if $(CONFIG_NODEJS_ICU_SMALL),small-icu,$(if $(CONFIG_NODEJS_ICU_SYSTEM),system-icu,none)) \

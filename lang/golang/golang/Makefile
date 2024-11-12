@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2018, 2020 Jeffery To
+# Copyright (C) 2018-2023 Jeffery To
 #
 # This is free software, licensed under the GNU General Public License v2.
 # See /LICENSE for more information.
@@ -7,8 +7,8 @@
 
 include $(TOPDIR)/rules.mk
 
-GO_VERSION_MAJOR_MINOR:=1.19
-GO_VERSION_PATCH:=2
+GO_VERSION_MAJOR_MINOR:=1.23
+GO_VERSION_PATCH:=1
 
 PKG_NAME:=golang
 PKG_VERSION:=$(GO_VERSION_MAJOR_MINOR)$(if $(GO_VERSION_PATCH),.$(GO_VERSION_PATCH))
@@ -20,7 +20,7 @@ GO_SOURCE_URLS:=https://dl.google.com/go/ \
 
 PKG_SOURCE:=go$(PKG_VERSION).src.tar.gz
 PKG_SOURCE_URL:=$(GO_SOURCE_URLS)
-PKG_HASH:=2ce930d70a931de660fdaf271d70192793b1b240272645bf0275779f6704df6b
+PKG_HASH:=6ee44e298379d146a5e5aa6b1c5b5d5f5d0a3365eabdd70741e6e21340ec3b0d
 
 PKG_MAINTAINER:=Jeffery To <jeffery.to@gmail.com>
 PKG_LICENSE:=BSD-3-Clause
@@ -31,6 +31,7 @@ PKG_BUILD_DEPENDS:=golang/host
 PKG_BUILD_DIR:=$(BUILD_DIR)/go-$(PKG_VERSION)
 PKG_BUILD_PARALLEL:=1
 PKG_USE_MIPS16:=0
+PKG_BUILD_FLAGS:=no-mips16
 
 PKG_GO_PREFIX:=/usr
 PKG_GO_VERSION_ID:=$(GO_VERSION_MAJOR_MINOR)
@@ -62,10 +63,13 @@ HOST_GO_VALID_OS_ARCH:= \
   \
   aix_ppc64 \
   js_wasm \
+  wasip1_wasm \
+  \
+  freebsd_riscv64 \
   \
   linux_ppc64 linux_ppc64le \
   linux_mips linux_mipsle linux_mips64 linux_mips64le \
-  linux_riscv64 linux_s390x \
+  linux_loong64 linux_riscv64 linux_s390x \
   \
   openbsd_mips64
 
@@ -86,6 +90,18 @@ BOOTSTRAP_GO_VALID_OS_ARCH:= \
                  solaris_amd64 \
   windows_386    windows_amd64
 
+BOOTSTRAP_1_17_SOURCE:=go1.17.13.src.tar.gz
+BOOTSTRAP_1_17_SOURCE_URL:=$(GO_SOURCE_URLS)
+BOOTSTRAP_1_17_HASH:=a1a48b23afb206f95e7bbaa9b898d965f90826f6f1d1fc0c1d784ada0cd300fd
+
+BOOTSTRAP_1_17_BUILD_DIR:=$(HOST_BUILD_DIR)/.go_bootstrap_1.17
+
+BOOTSTRAP_1_20_SOURCE:=go1.20.14.src.tar.gz
+BOOTSTRAP_1_20_SOURCE_URL:=$(GO_SOURCE_URLS)
+BOOTSTRAP_1_20_HASH:=1aef321a0e3e38b7e91d2d7eb64040666cabdcc77d383de3c9522d0d69b67f4e
+
+BOOTSTRAP_1_20_BUILD_DIR:=$(HOST_BUILD_DIR)/.go_bootstrap_1.20
+
 include $(INCLUDE_DIR)/host-build.mk
 include $(INCLUDE_DIR)/package.mk
 include ../golang-compiler.mk
@@ -94,6 +110,8 @@ include ../golang-package.mk
 PKG_UNPACK:=$(HOST_TAR) -C "$(PKG_BUILD_DIR)" --strip-components=1 -xzf "$(DL_DIR)/$(PKG_SOURCE)"
 HOST_UNPACK:=$(HOST_TAR) -C "$(HOST_BUILD_DIR)" --strip-components=1 -xzf "$(DL_DIR)/$(PKG_SOURCE)"
 BOOTSTRAP_UNPACK:=$(HOST_TAR) -C "$(BOOTSTRAP_BUILD_DIR)" --strip-components=1 -xzf "$(DL_DIR)/$(BOOTSTRAP_SOURCE)"
+BOOTSTRAP_1_17_UNPACK:=$(HOST_TAR) -C "$(BOOTSTRAP_1_17_BUILD_DIR)" --strip-components=1 -xzf "$(DL_DIR)/$(BOOTSTRAP_1_17_SOURCE)"
+BOOTSTRAP_1_20_UNPACK:=$(HOST_TAR) -C "$(BOOTSTRAP_1_20_BUILD_DIR)" --strip-components=1 -xzf "$(DL_DIR)/$(BOOTSTRAP_1_20_SOURCE)"
 
 # don't strip ELF executables in test data
 RSTRIP:=:
@@ -181,14 +199,46 @@ ifeq ($(BOOTSTRAP_ROOT_DIR),)
   $(eval $(call Download,golang-bootstrap))
 
   define Bootstrap/Prepare
-	mkdir -p "$(BOOTSTRAP_BUILD_DIR)"
-	$(BOOTSTRAP_UNPACK)
+	mkdir -p "$(BOOTSTRAP_BUILD_DIR)" && $(BOOTSTRAP_UNPACK) ;
   endef
   Hooks/HostPrepare/Post+=Bootstrap/Prepare
 
   $(eval $(call GoCompiler/AddProfile,Bootstrap,$(BOOTSTRAP_BUILD_DIR),,bootstrap,$(GO_HOST_OS_ARCH)))
 endif
 
+
+# Bootstrap 1.17
+
+define Download/golang-bootstrap-1.17
+  FILE:=$(BOOTSTRAP_1_17_SOURCE)
+  URL:=$(BOOTSTRAP_1_17_SOURCE_URL)
+  HASH:=$(BOOTSTRAP_1_17_HASH)
+endef
+$(eval $(call Download,golang-bootstrap-1.17))
+
+define Bootstrap-1.17/Prepare
+	mkdir -p "$(BOOTSTRAP_1_17_BUILD_DIR)" && $(BOOTSTRAP_1_17_UNPACK) ;
+endef
+Hooks/HostPrepare/Post+=Bootstrap-1.17/Prepare
+
+$(eval $(call GoCompiler/AddProfile,Bootstrap-1.17,$(BOOTSTRAP_1_17_BUILD_DIR),,bootstrap-1.17,$(GO_HOST_OS_ARCH)))
+
+
+# Bootstrap 1.20
+
+define Download/golang-bootstrap-1.20
+  FILE:=$(BOOTSTRAP_1_20_SOURCE)
+  URL:=$(BOOTSTRAP_1_20_SOURCE_URL)
+  HASH:=$(BOOTSTRAP_1_20_HASH)
+endef
+$(eval $(call Download,golang-bootstrap-1.20))
+
+define Bootstrap-1.20/Prepare
+	mkdir -p "$(BOOTSTRAP_1_20_BUILD_DIR)" && $(BOOTSTRAP_1_20_UNPACK) ;
+endef
+Hooks/HostPrepare/Post+=Bootstrap-1.20/Prepare
+
+$(eval $(call GoCompiler/AddProfile,Bootstrap-1.20,$(BOOTSTRAP_1_20_BUILD_DIR),,bootstrap-1.20,$(GO_HOST_OS_ARCH)))
 
 # Host
 
@@ -220,8 +270,18 @@ define Host/Compile
 		$(HOST_GO_VARS) \
 	)
 
-	$(call GoCompiler/Host/Make, \
+	$(call GoCompiler/Bootstrap-1.17/Make, \
 		GOROOT_BOOTSTRAP="$(BOOTSTRAP_ROOT_DIR)" \
+		$(HOST_GO_VARS) \
+	)
+
+	$(call GoCompiler/Bootstrap-1.20/Make, \
+		GOROOT_BOOTSTRAP="$(BOOTSTRAP_1_17_BUILD_DIR)" \
+		$(HOST_GO_VARS) \
+	)
+
+	$(call GoCompiler/Host/Make, \
+		GOROOT_BOOTSTRAP="$(BOOTSTRAP_1_20_BUILD_DIR)" \
 		$(if $(HOST_GO_ENABLE_PIE),GO_LDFLAGS="-buildmode pie") \
 		$(HOST_GO_VARS) \
 	)
@@ -266,7 +326,7 @@ $(eval $(call GoCompiler/AddProfile,Package,$(PKG_BUILD_DIR),$(PKG_GO_PREFIX),$(
 PKG_GO_ZBOOTSTRAP_MODS:= \
 	s/defaultGO386 = `[^`]*`/defaultGO386 = `$(or $(GO_386),sse2)`/; \
 	s/defaultGOAMD64 = `[^`]*`/defaultGOAMD64 = `$(or $(GO_AMD64),v1)`/; \
-	s/defaultGOARM = `[^`]*`/defaultGOARM = `$(or $(GO_ARM),5)`/; \
+	s/defaultGOARM = `[^`]*`/defaultGOARM = `$(or $(GO_ARM),7)`/; \
 	s/defaultGOMIPS = `[^`]*`/defaultGOMIPS = `$(or $(GO_MIPS),hardfloat)`/; \
 	s/defaultGOMIPS64 = `[^`]*`/defaultGOMIPS64 = `$(or $(GO_MIPS64),hardfloat)`/; \
 	s/defaultGOPPC64 = `[^`]*`/defaultGOPPC64 = `$(or $(GO_PPC64),power8)`/;
@@ -295,10 +355,9 @@ PKG_GO_LDFLAGS= \
 	-extldflags '$(patsubst -z%,-Wl$(comma)-z$(comma)%,$(TARGET_LDFLAGS))' \
 	$(if $(CONFIG_NO_STRIP)$(CONFIG_DEBUG),,-s -w)
 
-# setting -trimpath is not necessary here because the paths inside the
-# compiler binary are relative to GOROOT_FINAL (PKG_GO_ROOT), which is
-# static / not dependent on the build environment
 PKG_GO_INSTALL_ARGS= \
+	-buildvcs=false \
+	-trimpath \
 	-ldflags "all=$(PKG_GO_LDFLAGS)" \
 	$(if $(PKG_GO_GCFLAGS),-gcflags "all=$(PKG_GO_GCFLAGS)") \
 	$(if $(PKG_GO_ASMFLAGS),-asmflags "all=$(PKG_GO_ASMFLAGS)") \
