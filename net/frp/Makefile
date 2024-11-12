@@ -6,7 +6,7 @@ PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/davinyue/frp/tar.gz/v${PKG_VERSION}?
-PKG_HASH:=3bedb3a6c4cedee78320ca7bfe321949aaaf538d53a9c3f1db2b7e592b474268
+PKG_HASH:=af6cb2b74c7eee89f2891be1420db88edf5936cea7413802126b0e497ddd37d2
 
 PKG_MAINTAINER:=Richard Yu <yurichard3839@gmail.com>
 PKG_LICENSE:=Apache-2.0
